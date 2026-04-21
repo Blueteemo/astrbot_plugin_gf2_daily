@@ -1,0 +1,47 @@
+{
+  "account": {
+    "description": "社区账号（手机号）",
+    "type": "string",
+    "hint": "少前2社区绑定的手机号"
+  },
+  "password": {
+    "description": "社区密码",
+    "type": "string",
+    "hint": "密码仅存储在本地，不会上传"
+  },
+  "exchange_1": {
+    "description": "兑换：情报拼图×20（30积分/次，每日2次）",
+    "type": "bool",
+    "default": true
+  },
+  "exchange_2": {
+    "description": "兑换：萨狄斯金×500（30积分/次，每日1次）",
+    "type": "bool",
+    "default": true
+  },
+  "exchange_3": {
+    "description": "兑换：战场报告×500（30积分/次，每日1次）",
+    "type": "bool",
+    "default": true
+  },
+  "exchange_4": {
+    "description": "兑换：解析图纸×500（30积分/次，每日1次）",
+    "type": "bool",
+    "default": true
+  },
+  "exchange_5": {
+    "description": "兑换：基原信息核×1（100积分/次，每月1次）",
+    "type": "bool",
+    "default": true
+  },
+  "auto_exchange_limited": {
+    "description": "自动兑换限时/特殊商品",
+    "type": "bool",
+    "default": true
+  },
+  "log_exchanged_items": {
+    "description": "输出已兑换商品的兑换日志",
+    "type": "bool",
+    "default": false
+  }
+}
