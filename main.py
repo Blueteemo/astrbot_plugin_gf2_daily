@@ -71,7 +71,7 @@ class GF2DailyPlugin(Star):
         headers = {**COMMON_HEADERS, "Authorization": token}
         data = await self._request(session, "GET", url, headers)
         if data and data.get("Code") == 0:
-            return data.get("data", {})
+            return data.get("data") or {}
         return None
 
     async def _get_topic_list(self, session: aiohttp.ClientSession, token: str) -> List[dict]:
@@ -83,7 +83,10 @@ class GF2DailyPlugin(Star):
         headers = {**COMMON_HEADERS, "Authorization": token}
         data = await self._request(session, "GET", url, headers)
         if data and data.get("Code") == 0:
-            return data.get("data", {}).get("list", [])
+            raw = data.get("data")
+            if isinstance(raw, dict):
+                return raw.get("list") or []
+            return []
         return []
 
     async def _view_topic(self, session: aiohttp.ClientSession, token: str, topic_id: int) -> bool:
@@ -109,7 +112,10 @@ class GF2DailyPlugin(Star):
         headers = {**COMMON_HEADERS, "Authorization": token}
         data = await self._request(session, "GET", url, headers)
         if data and data.get("Code") == 0:
-            return data.get("data", {}).get("list", [])
+            raw = data.get("data")
+            if isinstance(raw, dict):
+                return raw.get("list") or []
+            return []
         return []
 
     async def _exchange_item(self, session: aiohttp.ClientSession, token: str, exchange_id: int) -> Tuple[bool, str]:
@@ -143,7 +149,7 @@ class GF2DailyPlugin(Star):
 
     @filter.command("gf2")
     async def gf2(self, event: AstrMessageEvent):
-        """少前2社区每日任务 用法: /gf2 - 执行完整每日任务 /gf2 签到 - 仅签到 /gf2 状态 - 查看积分/等级 /gf2 兑换 - 查看商品列表 /gf2 兑换 <ID> - 手动兑换指定商品"""
+        """少前2社区每日任务 用法: /gf2 - 执行完整每日任务 /gf2 签到 - 仅签到 /gf2 状态 - 查看积分/等级 /gf2 兑换 - 查看商品列表 /gf2 兑换 <ID> - 手动兑换指定商品 /gf2 调试 - 查看原始API数据"""
         account = self.config.get("account", "")
         password = self.config.get("password", "")
         if not account or not password:
@@ -182,6 +188,32 @@ class GF2DailyPlugin(Star):
                     yield event.plain_result("获取状态失败")
                 return
 
+            if sub_cmd == "调试":
+                task_data = await self._get_task_list(session, token)
+                topics = await self._get_topic_list(session, token)
+                items = await self._get_exchange_list(session, token)
+                debug_info = [
+                    "=== GF2 调试信息 ===",
+                    f"任务列表原始数据: {task_data}",
+                    f"帖子列表数量: {len(topics)}",
+                    f"商品列表数量: {len(items)}",
+                ]
+                # 解析任务完成状态
+                if task_data and isinstance(task_data, dict):
+                    for key in ("daily_task", "task_list", "tasks", "list"):
+                        if key in task_data and isinstance(task_data[key], list):
+                            debug_info.append(f"\n任务字段名: {key}")
+                            for task in task_data[key]:
+                                if isinstance(task, dict):
+                                    name = task.get("task_name") or task.get("name") or "未知"
+                                    complete = task.get("complete_count", 0)
+                                    max_count = task.get("max_complete_count", 0)
+                                    status = "已完成" if complete >= max_count else f"未完成({complete}/{max_count})"
+                                    debug_info.append(f"  - {name}: {status}")
+                            break
+                yield event.plain_result("\n".join(debug_info))
+                return
+
             if sub_cmd == "兑换":
                 if len(args) > 2 and args[2].isdigit():
                     exchange_id = int(args[2])
@@ -197,7 +229,7 @@ class GF2DailyPlugin(Star):
                         return
                     ok, msg = await self._exchange_item(session, token, exchange_id)
                     if ok:
-                        yield event.plain_result(f"成功兑换 {target['item_name']}*{target['item_count']}")
+                        yield event.plain_result(f"成功兑换 {target['item_name']}×{target['item_count']}")
                     else:
                         yield event.plain_result(msg)
                     return
@@ -213,7 +245,7 @@ class GF2DailyPlugin(Star):
                         cycle_map = {"day": "每日", "month": "每月", "life": "限时"}
                         cycle = cycle_map.get(item["cycle"], item["cycle"])
                         lines.append(
-                            f"ID:{item['exchange_id']} {item['item_name']}*{item['item_count']} "
+                            f"ID:{item['exchange_id']} {item['item_name']}×{item['item_count']} "
                             f"{item['use_score']}积分 {cycle} {status}"
                         )
                     yield event.plain_result("\n".join(lines))
@@ -228,9 +260,31 @@ class GF2DailyPlugin(Star):
             task_data = await self._get_task_list(session, token)
             incomplete_tasks = {}
             if task_data:
-                for task in task_data.get("daily_task", []):
-                    if task["complete_count"] < task["max_complete_count"]:
-                        incomplete_tasks[task["task_name"]] = task["max_complete_count"] - task["complete_count"]
+                # 尝试多种可能的字段名（daily_task / task_list / tasks）
+                task_list = None
+                for key in ("daily_task", "task_list", "tasks", "list"):
+                    if key in task_data and isinstance(task_data[key], list):
+                        task_list = task_data[key]
+                        break
+                if task_list is None:
+                    # 兜底：如果 data 本身就是列表
+                    if isinstance(task_data, list):
+                        task_list = task_data
+                    else:
+                        logger.warning(f"GF2 任务列表字段未识别，原始数据: {task_data}")
+                if task_list:
+                    for task in task_list:
+                        if not isinstance(task, dict):
+                            continue
+                        name = task.get("task_name") or task.get("name") or task.get("title", "未知任务")
+                        complete = task.get("complete_count", 0)
+                        max_count = task.get("max_complete_count", 0)
+                        if complete < max_count:
+                            incomplete_tasks[name] = max_count - complete
+            logger.info(f"GF2 未完成任务: {incomplete_tasks}")
+
+            if not incomplete_tasks:
+                messages.append("今日任务已全部完成✨")
 
             # 2. 执行未完成的浏览/点赞/分享
             topics = await self._get_topic_list(session, token)
@@ -328,7 +382,7 @@ class GF2DailyPlugin(Star):
                     ok, msg = await self._exchange_item(session, token, eid)
                     if ok:
                         exchange_logs.append(
-                            f"消耗积分{item['use_score']}，成功兑换『{item['item_name']}*{item['item_count']}』"
+                            f"消耗积分{item['use_score']}，成功兑换『{item['item_name']}×{item['item_count']}』"
                         )
                     else:
                         # 兑换失败，无条件输出
@@ -366,7 +420,7 @@ class GF2DailyPlugin(Star):
                 get_item_count = sign_data.get("get_item_count", 0)
                 all_messages.append(
                     f"{user_info.get('game_nick_name', '用户')}(UID:{user_info.get('game_uid', '?')})"
-                    f"签到成功，获得{get_item_name}*{get_item_count}"
+                    f"签到成功，获得{get_item_name}×{get_item_count}"
                 )
                 # 任务日志（浏览/点赞/分享/签到奖励）
                 all_messages.extend(messages)
