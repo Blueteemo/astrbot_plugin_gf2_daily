@@ -32,7 +32,7 @@ def _encrypt_data(text: str, key: str) -> str:
     return b64.replace("+", "-").replace("/", "_").rstrip("=")
 
 
-@register("astrbot_plugin_gf2_daily", "Blueteemo", "少前2社区每日任务", "1.0.0")
+@register("astrbot_plugin_gf2_daily", "Blueteemo", "少前2社区每日任务", "1.0.1")
 class GF2DailyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)

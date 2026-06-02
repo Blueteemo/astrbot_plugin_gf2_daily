@@ -1,7 +1,7 @@
 name: astrbot_plugin_gf2_daily
 display_name: 少前2 社区助手
 desc: 《少女前线2：追放》社区一站式服务：日常互动、签到福利、资源兑换。
-version: 1.0.0
+version: 1.0.1
 author: Blueteemo
 repo: https://github.com/Blueteemo/astrbot_plugin_gf2_daily
 astrbot_version: '>=4.16.0'
