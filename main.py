@@ -3,18 +3,33 @@
 
 import hashlib
 import asyncio
+import base64
 import aiohttp
 from typing import Optional, List, Dict, Any, Tuple
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 
 BASE_API = "https://gf2-bbs-api.exiliumgf.com"
+ENCRYPTION_KEY = "a86a86^oH$04r6A1"
 COMMON_HEADERS = {
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0",
 }
+
+
+def _encrypt_data(text: str, key: str) -> str:
+    """AES-128-CBC encrypt + URL-safe base64 (matches official website JS)"""
+    key_bytes = key.encode("utf-8")
+    cipher = AES.new(key_bytes, AES.MODE_CBC, key_bytes)
+    padded = pad(text.encode("utf-8"), AES.block_size)
+    encrypted = cipher.encrypt(padded)
+    b64 = base64.b64encode(encrypted).decode("utf-8")
+    return b64.replace("+", "-").replace("/", "_").rstrip("=")
 
 
 @register("astrbot_plugin_gf2_daily", "Blueteemo", "少前2社区每日任务", "1.0.0")
@@ -45,9 +60,11 @@ class GF2DailyPlugin(Star):
 
     async def _login(self, session: aiohttp.ClientSession, account: str, password: str) -> Optional[str]:
         url = f"{BASE_API}/login/account"
+        # Official website flow: MD5 password first, then AES-128-CBC encrypt both fields
+        passwd_md5 = hashlib.md5(password.encode()).hexdigest()
         payload = {
-            "account_name": account,
-            "passwd": hashlib.md5(password.encode()).hexdigest(),
+            "account_name": _encrypt_data(account, ENCRYPTION_KEY),
+            "passwd": _encrypt_data(passwd_md5, ENCRYPTION_KEY),
             "source": "phone",
         }
         headers = {**COMMON_HEADERS, "Content-Type": "application/json"}
